@@ -72,7 +72,9 @@ class _HomeTabState extends State<HomeTab> {
     if (mounted) setState(() => _loading = false);
   }
 
-  void _showSettings() {
+  Future<void> _showSettings() async {
+    await KidLock.i.refresh();
+    if (!mounted) return;
     showCupertinoModalPopup(
       context: context,
       builder: (ctx) => CupertinoActionSheet(
@@ -96,7 +98,16 @@ class _HomeTabState extends State<HomeTab> {
                 }
                 if (mounted) setState(() {});
               },
-              child: Text(KidLock.i.locked ? '退出儿童锁定' : '进入儿童锁定（全屏，退出需家长密码）'),
+              child: Text(
+                  KidLock.i.locked ? '退出儿童锁定' : KidLock.i.enableLabel),
+            ),
+          if (KidLock.i.iosGuide)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(ctx);
+                KidLock.i.showGuidedAccessHelp(context);
+              },
+              child: const Text('儿童锁定（引导式访问）'),
             ),
           CupertinoActionSheetAction(
             isDestructiveAction: true,
