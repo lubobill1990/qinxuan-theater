@@ -65,27 +65,25 @@ class _MainShellState extends State<MainShell> {
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding:
-                  EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              child: SafeArea(
-                top: false,
-                minimum: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: ScaleTransition(
-                        scale: Tween(begin: 0.92, end: 1.0).animate(anim),
-                        child: child,
-                      ),
+            // 键盘高度由 CupertinoPageScaffold 的 resizeToAvoidBottomInset
+            // 自动补偿，这里不要再叠加 viewInsets，否则会双倍上移
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: ScaleTransition(
+                      scale: Tween(begin: 0.92, end: 1.0).animate(anim),
+                      child: child,
                     ),
-                    child: _searchActive ? _expandedSearch() : _collapsedBar(),
                   ),
+                  child: _searchActive ? _expandedSearch() : _collapsedBar(),
                 ),
               ),
             ),

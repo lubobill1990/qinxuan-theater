@@ -256,6 +256,8 @@ class _LoginPageState extends State<LoginPage> {
                 child: _onQrPage
                     ? null
                     : CupertinoButton.filled(
+                        // 固定 48 高度下自带竖向 padding 会裁掉文字下半截
+                        padding: EdgeInsets.zero,
                         borderRadius: BorderRadius.circular(14),
                         onPressed: () => _goTo(_page + 1),
                         child: Text(

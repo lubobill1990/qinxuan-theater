@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'pages/kid_lock_guide_page.dart';
+
 class KidLock with WindowListener {
   KidLock._();
   static final KidLock i = KidLock._();
@@ -82,39 +84,7 @@ class KidLock with WindowListener {
       active = await _ch.invokeMethod<bool>('isGuidedAccess') ?? false;
     } catch (_) {}
     if (!context.mounted) return;
-    await showCupertinoDialog<void>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('儿童锁定（引导式访问）'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                active ? '当前已处于引导式访问中 ✓' : '当前未开启引导式访问',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '引导式访问是 iPad 自带的儿童锁定，开启后孩子无法离开本 App：\n\n'
-                '1. 打开 设置 → 辅助功能 → 引导式访问，开启并设置密码\n\n'
-                '2. 回到本 App，连按三下侧边（或顶部）按钮，点「开始」\n\n'
-                '3. 结束时再连按三下，输入密码后点「结束」',
-                textAlign: TextAlign.left,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
+    showKidLockGuide(context, active: active);
   }
 
   @override

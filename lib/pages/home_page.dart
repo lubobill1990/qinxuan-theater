@@ -157,6 +157,8 @@ class _HomeTabState extends State<HomeTab> {
       physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics()),
       slivers: [
+        // 必须是第一个 sliver，否则拿不到顶部 overscroll，既无动画也不触发刷新
+        CupertinoSliverRefreshControl(onRefresh: _reload),
         SliverSafeArea(
           bottom: false,
           sliver: SliverToBoxAdapter(
@@ -188,7 +190,6 @@ class _HomeTabState extends State<HomeTab> {
             ),
           ),
         ),
-        CupertinoSliverRefreshControl(onRefresh: _reload),
         if (folders.length > 1) SliverToBoxAdapter(child: _folderChips()),
         if (_loading)
           const SliverFillRemaining(
