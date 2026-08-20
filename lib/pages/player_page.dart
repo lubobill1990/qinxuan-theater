@@ -238,10 +238,11 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   Widget build(BuildContext context) {
     final info = _info;
-    final landscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
-    // 手机/iPad 横屏：视频自动全屏
-    if (_isMobile && landscape && info != null && _error == null) {
+    final mq = MediaQuery.of(context);
+    final landscape = mq.orientation == Orientation.landscape;
+    // 仅手机横屏自动全屏；iPad 常态横屏，保留分栏布局，全屏走控制条按钮
+    final isPhone = _isMobile && mq.size.shortestSide < 600;
+    if (isPhone && landscape && info != null && _error == null) {
       _setImmersive(true);
       return CupertinoPageScaffold(
         backgroundColor: const Color(0xFF000000),
