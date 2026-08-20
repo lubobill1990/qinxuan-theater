@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 import '../api/bili_client.dart';
 import '../kid_lock.dart';
@@ -28,26 +29,45 @@ class _HomeTabState extends State<HomeTab> {
     _reload();
   }
 
+  bool get _isDesktop =>
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
   List<VideoItem> get _displayed {
     if (_selected == -1) return Library.i.all();
     final f = Library.i.folders[_selected];
     return Library.i.cache[f.id] ?? const [];
   }
 
+  bool _refreshing = false;
+
   Future<void> _reload() async {
+    if (_refreshing) return;
     setState(() {
-      _loading = true;
+      // 首次加载才整页转圈；下拉/点击刷新时保留旧列表
+      _loading = Library.i.folders.isEmpty;
+      _refreshing = true;
       _error = null;
     });
-    Library.i.reset();
+    final prevId = _selected >= 0 && _selected < Library.i.folders.length
+        ? Library.i.folders[_selected].id
+        : null;
     try {
-      await Library.i.loadFolders(force: true);
-      if (_selected >= Library.i.folders.length) _selected = -1;
-      await _loadSelection();
+      await Library.i.refresh();
+      // 收藏夹可能新增/删除/换序，按 id 找回原选中项，找不到则回到「全部」
+      _selected = prevId == null
+          ? -1
+          : Library.i.folders.indexWhere((f) => f.id == prevId);
     } catch (e) {
       _error = '$e';
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _refreshing = false;
+      });
+    }
   }
 
   Future<void> _loadSelection() async {
@@ -148,6 +168,16 @@ class _HomeTabState extends State<HomeTab> {
                       style:
                           TextStyle(fontSize: 21, fontWeight: FontWeight.w700)),
                   const Spacer(),
+                  if (_isDesktop)
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _reload,
+                      child: _refreshing
+                          ? const CupertinoActivityIndicator(radius: 11)
+                          : const Icon(CupertinoIcons.arrow_clockwise,
+                              size: 24),
+                    ),
+                  if (_isDesktop) const SizedBox(width: 12),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
                     onPressed: _showSettings,
