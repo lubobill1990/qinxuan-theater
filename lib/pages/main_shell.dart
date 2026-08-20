@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import '../library.dart';
 import '../models.dart';
 import '../widgets/video_card.dart';
+import 'guide_page.dart';
 import 'history_page.dart';
 import 'home_page.dart';
 import 'player_page.dart';
@@ -22,6 +23,14 @@ class _MainShellState extends State<MainShell> {
   bool _searchActive = false;
   final _searchCtrl = TextEditingController();
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    guideShown().then((shown) {
+      if (!shown && mounted) showGuide(context);
+    });
+  }
 
   @override
   void dispose() {

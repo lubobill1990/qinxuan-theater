@@ -1,0 +1,71 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign --build-number ${{ github.run_number }}
+
+      - name: Write App Store Connect API key
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - name: Archive (cloud managed signing)
+        run: |
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Runner.xcarchive archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Automatic
+
+      - name: Export IPA
+        run: |
+          cd ios
+          cat > ExportOptions.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>TEAM_ID_PLACEHOLDER</string>
+          </dict></plist>
+          EOF
+          sed -i '' "s/TEAM_ID_PLACEHOLDER/${{ secrets.APPLE_TEAM_ID }}/" ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/Runner.xcarchive \
+            -exportPath build/export -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Upload to TestFlight
+        run: |
+          jq -n --arg kid "${{ secrets.ASC_KEY_ID }}" \
+                --arg iss "${{ secrets.ASC_ISSUER_ID }}" \
+                --rawfile key ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+                '{key_id:$kid, issuer_id:$iss, key:$key, in_house:false}' > /tmp/asc_key.json
+          fastlane pilot upload --ipa ios/build/export/*.ipa \
+            --api_key_path /tmp/asc_key.json \
+            --skip_waiting_for_build_processing true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qinxuan-theater-ipa
+          path: ios/build/export/*.ipa

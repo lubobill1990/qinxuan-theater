@@ -5,6 +5,7 @@ import '../kid_lock.dart';
 import '../library.dart';
 import '../models.dart';
 import '../widgets/video_card.dart';
+import 'guide_page.dart';
 import 'player_page.dart';
 
 class HomeTab extends StatefulWidget {
@@ -77,6 +78,13 @@ class _HomeTabState extends State<HomeTab> {
       builder: (ctx) => CupertinoActionSheet(
         title: Text(BiliClient.i.uname),
         actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              showGuide(context);
+            },
+            child: const Text('使用说明'),
+          ),
           if (KidLock.i.supported)
             CupertinoActionSheetAction(
               onPressed: () async {
@@ -148,7 +156,20 @@ class _HomeTabState extends State<HomeTab> {
         else if (folders.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: _message('没有找到「儿童」开头的收藏夹\n请先在哔哩哔哩里创建并收藏视频'),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _message('没有找到「儿童」开头的收藏夹\n请先在哔哩哔哩里创建并收藏视频'),
+                  const SizedBox(height: 16),
+                  CupertinoButton.filled(
+                    borderRadius: BorderRadius.circular(14),
+                    onPressed: () => showGuide(context),
+                    child: const Text('查看使用说明'),
+                  ),
+                ],
+              ),
+            ),
           )
         else if (videos.isEmpty)
           SliverFillRemaining(
