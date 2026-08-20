@@ -77,10 +77,19 @@ class _HistoryTabState extends State<HistoryTab> {
               Expanded(
                 child: entries.isEmpty
                     ? const Center(
-                        child: Text('还没有看过视频',
-                            style: TextStyle(
-                                fontSize: 16,
-                                color: CupertinoColors.secondaryLabel)),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.clock,
+                                size: 52,
+                                color: CupertinoColors.tertiaryLabel),
+                            SizedBox(height: 12),
+                            Text('还没有看过视频',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: CupertinoColors.secondaryLabel)),
+                          ],
+                        ),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(

@@ -250,19 +250,23 @@ class _LoginPageState extends State<LoginPage> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(40, 24, 40, 20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: _onQrPage
-                    ? null
-                    : CupertinoButton.filled(
-                        // 固定 48 高度下自带竖向 padding 会裁掉文字下半截
-                        padding: EdgeInsets.zero,
-                        borderRadius: BorderRadius.circular(14),
-                        onPressed: () => _goTo(_page + 1),
-                        child: Text(
-                            _page == _intro.length - 1 ? '去扫码登录' : '下一步'),
-                      ),
+              child: ConstrainedBox(
+                // iPad 上不让按钮拉满全宽
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: _onQrPage
+                      ? null
+                      : CupertinoButton.filled(
+                          // 固定 48 高度下自带竖向 padding 会裁掉文字下半截
+                          padding: EdgeInsets.zero,
+                          borderRadius: BorderRadius.circular(14),
+                          onPressed: () => _goTo(_page + 1),
+                          child: Text(
+                              _page == _intro.length - 1 ? '去扫码登录' : '下一步'),
+                        ),
+                ),
               ),
             ),
           ],

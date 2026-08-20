@@ -65,12 +65,16 @@ class VideoCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Text(
-                video.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              // 固定两行高度，避免单行标题的卡片封面比别人高
+              child: SizedBox(
+                height: 42,
+                child: Text(
+                  video.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600, height: 1.4),
+                ),
               ),
             ),
           ],

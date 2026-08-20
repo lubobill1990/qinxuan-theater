@@ -151,18 +151,22 @@ class _KidLockGuidePageState extends State<KidLockGuidePage> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(40, 24, 40, 20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: CupertinoButton.filled(
-                  padding: EdgeInsets.zero,
-                  borderRadius: BorderRadius.circular(14),
-                  onPressed: last
-                      ? () => Navigator.of(context).pop()
-                      : () => _pc.nextPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut),
-                  child: Text(last ? '知道了' : '下一步'),
+              child: ConstrainedBox(
+                // iPad 上不让按钮拉满全宽
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: CupertinoButton.filled(
+                    padding: EdgeInsets.zero,
+                    borderRadius: BorderRadius.circular(14),
+                    onPressed: last
+                        ? () => Navigator.of(context).pop()
+                        : () => _pc.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut),
+                    child: Text(last ? '知道了' : '下一步'),
+                  ),
                 ),
               ),
             ),

@@ -32,6 +32,8 @@ jobs:
           EOF
 
       - run: flutter pub get
+      # golden 截图对字体渲染敏感，只在本地生成比对
+      - run: flutter test --exclude-tags golden
       - run: flutter build apk --release
 
       - uses: actions/upload-artifact@v4

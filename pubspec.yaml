@@ -57,6 +57,9 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.4
+  # 截图测试里让 cached_network_image 真正落盘渲染封面
+  sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.4
 
 flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png"

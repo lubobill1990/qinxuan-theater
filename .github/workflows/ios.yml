@@ -23,6 +23,8 @@ jobs:
           cache: true
 
       - run: flutter pub get
+      # golden 截图对字体渲染敏感，只在本地生成比对
+      - run: flutter test --exclude-tags golden
       - run: flutter build ios --release --no-codesign --build-number ${{ github.run_number }}
 
       - name: Write App Store Connect API key
