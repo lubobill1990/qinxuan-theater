@@ -133,6 +133,9 @@ class _HomeTabState extends State<HomeTab> {
     final folders = Library.i.folders;
     final videos = _displayed;
     return CustomScrollView(
+      // 保证内容不足一屏、以及 Android 上也能触发下拉刷新
+      physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics()),
       slivers: [
         SliverSafeArea(
           bottom: false,
