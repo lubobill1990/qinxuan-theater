@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -26,15 +27,34 @@ class _PlayerPageState extends State<PlayerPage> {
   int _current = 0;
   String? _error;
   Timer? _ticker;
+  StreamSubscription<bool>? _completedSub;
 
   @override
   void initState() {
     super.initState();
+    _completedSub = _player.stream.completed.listen((done) {
+      if (done) _autoNext();
+    });
     _setup();
+  }
+
+  bool _advancing = false;
+
+  Future<void> _autoNext() async {
+    final info = _info;
+    if (!mounted || info == null || _advancing) return;
+    if (_current + 1 >= info.episodes.length) return;
+    _advancing = true;
+    try {
+      await _play(_current + 1);
+    } finally {
+      _advancing = false;
+    }
   }
 
   @override
   void dispose() {
+    _completedSub?.cancel();
     _ticker?.cancel();
     _record();
     _player.dispose();
@@ -142,6 +162,67 @@ class _PlayerPageState extends State<PlayerPage> {
 
   bool _immersive = false;
 
+  Widget _video(ViewInfo info) {
+    final hasPrev = _current > 0;
+    final hasNext = _current + 1 < info.episodes.length;
+    // 控制条可能持有旧的按钮列表，回调里必须重新校验边界
+    void prev() {
+      if (_current > 0) _play(_current - 1);
+    }
+
+    void next() {
+      if (_current + 1 < info.episodes.length) _play(_current + 1);
+    }
+
+    if (_isMobile) {
+      final theme = MaterialVideoControlsThemeData(
+        primaryButtonBar: [
+          const Spacer(flex: 2),
+          if (hasPrev)
+            MaterialCustomButton(
+                onPressed: prev,
+                icon: const Icon(Icons.skip_previous),
+                iconSize: 36),
+          const Spacer(),
+          const MaterialPlayOrPauseButton(iconSize: 48),
+          const Spacer(),
+          if (hasNext)
+            MaterialCustomButton(
+                onPressed: next,
+                icon: const Icon(Icons.skip_next),
+                iconSize: 36),
+          const Spacer(flex: 2),
+        ],
+      );
+      return MaterialVideoControlsTheme(
+        normal: theme,
+        fullscreen: theme,
+        child: Video(controller: _controller, controls: MaterialVideoControls),
+      );
+    }
+    final theme = MaterialDesktopVideoControlsThemeData(
+      bottomButtonBar: [
+        if (hasPrev)
+          MaterialDesktopCustomButton(
+              onPressed: prev, icon: const Icon(Icons.skip_previous)),
+        const MaterialDesktopPlayOrPauseButton(),
+        if (hasNext)
+          MaterialDesktopCustomButton(
+              onPressed: next, icon: const Icon(Icons.skip_next)),
+        const MaterialDesktopVolumeButton(),
+        const MaterialDesktopPositionIndicator(),
+        const Spacer(),
+        const MaterialDesktopFullscreenButton(),
+      ],
+    );
+    return MaterialDesktopVideoControlsTheme(
+      normal: theme,
+      fullscreen: theme,
+      child: Video(
+          controller: _controller, controls: MaterialDesktopVideoControls),
+    );
+  }
+
   void _setImmersive(bool on) {
     if (_immersive == on) return;
     _immersive = on;
@@ -161,12 +242,7 @@ class _PlayerPageState extends State<PlayerPage> {
         backgroundColor: const Color(0xFF000000),
         child: Stack(
           children: [
-            Positioned.fill(
-              child: Video(
-                controller: _controller,
-                controls: AdaptiveVideoControls,
-              ),
-            ),
+            Positioned.fill(child: _video(info)),
             Positioned(
               top: 6,
               left: 6,
@@ -222,10 +298,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     final wide = constraints.maxWidth > constraints.maxHeight;
                     final video = ColoredBox(
                       color: const Color(0xFF000000),
-                      child: Video(
-                        controller: _controller,
-                        controls: AdaptiveVideoControls,
-                      ),
+                      child: _video(info),
                     );
                     if (wide) {
                       return Row(
