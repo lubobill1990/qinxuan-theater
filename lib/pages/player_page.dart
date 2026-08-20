@@ -24,7 +24,9 @@ class _PlayerPageState extends State<PlayerPage> {
   late final VideoController _controller = VideoController(_player);
 
   ViewInfo? _info;
-  int _current = 0;
+  final ValueNotifier<int> _currentN = ValueNotifier(0);
+  int get _current => _currentN.value;
+  set _current(int v) => _currentN.value = v;
   String? _error;
   Timer? _ticker;
   StreamSubscription<bool>? _completedSub;
@@ -57,6 +59,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _completedSub?.cancel();
     _ticker?.cancel();
     _record();
+    _currentN.dispose();
     _player.dispose();
     if (_immersive) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -162,62 +165,64 @@ class _PlayerPageState extends State<PlayerPage> {
 
   bool _immersive = false;
 
-  Widget _video(ViewInfo info) {
-    final hasPrev = _current > 0;
-    final hasNext = _current + 1 < info.episodes.length;
-    // 控制条可能持有旧的按钮列表，回调里必须重新校验边界
-    void prev() {
-      if (_current > 0) _play(_current - 1);
-    }
+  /// media_kit 的 *VideoControlsTheme.updateShouldNotify 逻辑写反了，
+  /// theme 实例变化时不会通知控制条刷新，所以 theme 必须只建一次，
+  /// 按钮用 ValueListenableBuilder 监听集数自行显隐。
+  Widget _epButton({required bool next, double? iconSize}) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _currentN,
+      builder: (_, cur, __) {
+        final len = _info?.episodes.length ?? 0;
+        final target = next ? cur + 1 : cur - 1;
+        if (target < 0 || target >= len) return const SizedBox.shrink();
+        final icon =
+            Icon(next ? Icons.skip_next : Icons.skip_previous, size: iconSize);
+        return _isMobile
+            ? MaterialCustomButton(
+                onPressed: () => _play(target), icon: icon, iconSize: iconSize)
+            : MaterialDesktopCustomButton(
+                onPressed: () => _play(target), icon: icon);
+      },
+    );
+  }
 
-    void next() {
-      if (_current + 1 < info.episodes.length) _play(_current + 1);
-    }
+  late final MaterialVideoControlsThemeData _mobileControlsTheme =
+      MaterialVideoControlsThemeData(
+    primaryButtonBar: [
+      const Spacer(flex: 2),
+      _epButton(next: false, iconSize: 36),
+      const Spacer(),
+      const MaterialPlayOrPauseButton(iconSize: 48),
+      const Spacer(),
+      _epButton(next: true, iconSize: 36),
+      const Spacer(flex: 2),
+    ],
+  );
 
+  late final MaterialDesktopVideoControlsThemeData _desktopControlsTheme =
+      MaterialDesktopVideoControlsThemeData(
+    bottomButtonBar: [
+      _epButton(next: false),
+      const MaterialDesktopPlayOrPauseButton(),
+      _epButton(next: true),
+      const MaterialDesktopVolumeButton(),
+      const MaterialDesktopPositionIndicator(),
+      const Spacer(),
+      const MaterialDesktopFullscreenButton(),
+    ],
+  );
+
+  Widget _video() {
     if (_isMobile) {
-      final theme = MaterialVideoControlsThemeData(
-        primaryButtonBar: [
-          const Spacer(flex: 2),
-          if (hasPrev)
-            MaterialCustomButton(
-                onPressed: prev,
-                icon: const Icon(Icons.skip_previous),
-                iconSize: 36),
-          const Spacer(),
-          const MaterialPlayOrPauseButton(iconSize: 48),
-          const Spacer(),
-          if (hasNext)
-            MaterialCustomButton(
-                onPressed: next,
-                icon: const Icon(Icons.skip_next),
-                iconSize: 36),
-          const Spacer(flex: 2),
-        ],
-      );
       return MaterialVideoControlsTheme(
-        normal: theme,
-        fullscreen: theme,
+        normal: _mobileControlsTheme,
+        fullscreen: _mobileControlsTheme,
         child: Video(controller: _controller, controls: MaterialVideoControls),
       );
     }
-    final theme = MaterialDesktopVideoControlsThemeData(
-      bottomButtonBar: [
-        if (hasPrev)
-          MaterialDesktopCustomButton(
-              onPressed: prev, icon: const Icon(Icons.skip_previous)),
-        const MaterialDesktopPlayOrPauseButton(),
-        if (hasNext)
-          MaterialDesktopCustomButton(
-              onPressed: next, icon: const Icon(Icons.skip_next)),
-        const MaterialDesktopVolumeButton(),
-        const MaterialDesktopPositionIndicator(),
-        const Spacer(),
-        const MaterialDesktopFullscreenButton(),
-      ],
-    );
     return MaterialDesktopVideoControlsTheme(
-      normal: theme,
-      fullscreen: theme,
+      normal: _desktopControlsTheme,
+      fullscreen: _desktopControlsTheme,
       child: Video(
           controller: _controller, controls: MaterialDesktopVideoControls),
     );
@@ -242,7 +247,7 @@ class _PlayerPageState extends State<PlayerPage> {
         backgroundColor: const Color(0xFF000000),
         child: Stack(
           children: [
-            Positioned.fill(child: _video(info)),
+            Positioned.fill(child: _video()),
             Positioned(
               top: 6,
               left: 6,
@@ -298,7 +303,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     final wide = constraints.maxWidth > constraints.maxHeight;
                     final video = ColoredBox(
                       color: const Color(0xFF000000),
-                      child: _video(info),
+                      child: _video(),
                     );
                     if (wide) {
                       return Row(
