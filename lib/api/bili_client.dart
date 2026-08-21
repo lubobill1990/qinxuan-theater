@@ -273,4 +273,22 @@ class BiliClient {
     final durl = (d['durl'] as List).first;
     return PlaySource(durl['url'] as String, null);
   }
+
+  /// 投屏用直链：html5 平台返回单文件 mp4（durl），
+  /// 电视不会带 Referer，这种直链没有防盗链限制才能播。
+  Future<String> castUrl(String bvid, int cid) async {
+    final d = await _get('https://api.bilibili.com/x/player/wbi/playurl',
+        params: {
+          'bvid': bvid,
+          'cid': cid,
+          'qn': 80,
+          'fnval': 1,
+          'fnver': 0,
+          'platform': 'html5',
+          'high_quality': 1,
+        },
+        sign: true);
+    final durl = (d['durl'] as List).first;
+    return durl['url'] as String;
+  }
 }

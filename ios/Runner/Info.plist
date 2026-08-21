@@ -47,5 +47,7 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于在局域网内查找电视等投屏设备，把视频投到大屏播放。</string>
 </dict>
 </plist>

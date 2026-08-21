@@ -152,13 +152,29 @@ class _HomeTabState extends State<HomeTab> {
   Widget build(BuildContext context) {
     final folders = Library.i.folders;
     final videos = _displayed;
+    final topInset = MediaQuery.paddingOf(context).top;
     return CustomScrollView(
       // 保证内容不足一屏、以及 Android 上也能触发下拉刷新
       physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics()),
       slivers: [
         // 必须是第一个 sliver，否则拿不到顶部 overscroll，既无动画也不触发刷新
-        CupertinoSliverRefreshControl(onRefresh: _reload),
+        CupertinoSliverRefreshControl(
+          // 接口快时转圈一闪而过，强制至少可见 0.7s
+          onRefresh: () => Future.wait([
+            _reload(),
+            Future<void>.delayed(const Duration(milliseconds: 700)),
+          ]),
+          // 默认指示器画在刷新区顶部，而刷新区顶着屏幕上缘，
+          // 会整个藏进刘海/状态栏，这里把它垫到安全区下方
+          refreshTriggerPullDistance: 100 + topInset,
+          refreshIndicatorExtent: 60 + topInset,
+          builder: (ctx, state, pulled, trigger, extent) => Padding(
+            padding: EdgeInsets.only(top: topInset),
+            child: CupertinoSliverRefreshControl.buildRefreshIndicator(
+                ctx, state, pulled, trigger, extent - topInset),
+          ),
+        ),
         SliverSafeArea(
           bottom: false,
           sliver: SliverToBoxAdapter(

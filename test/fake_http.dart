@@ -9,6 +9,9 @@ class FakeBili {
 
   static int _vid = 0;
 
+  /// 模拟慢网络，让测试能观察到「请求进行中」的 UI 状态。
+  static Duration responseDelay = Duration.zero;
+
   static Map<String, dynamic> video(String title, {int cover = 1}) => {
         'bvid': 'BV${(++_vid).toString().padLeft(8, '0')}',
         'title': title,
@@ -21,6 +24,7 @@ class FakeBili {
 
   static void reset() {
     _vid = 0;
+    responseDelay = Duration.zero;
     folders
       ..clear()
       ..addAll({
@@ -98,7 +102,12 @@ class _FakeRequest implements HttpClientRequest {
   Uri get uri => _url;
 
   @override
-  Future<HttpClientResponse> close() async => _route(_url);
+  Future<HttpClientResponse> close() async {
+    if (FakeBili.responseDelay > Duration.zero) {
+      await Future<void>.delayed(FakeBili.responseDelay);
+    }
+    return _route(_url);
+  }
 
   @override
   Future<HttpClientResponse> get done => close();

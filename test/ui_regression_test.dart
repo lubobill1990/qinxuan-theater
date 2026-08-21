@@ -145,6 +145,32 @@ void main() {
       expect(find.text('科普'), findsOneWidget, reason: '下拉刷新后应出现新收藏夹');
     });
 
+    testWidgets('下拉刷新过程中能看到加载指示器', (tester) async {
+      await pumpApp(tester, MainShell(onLogout: () {}));
+      await settle(tester);
+      expect(find.byType(CupertinoActivityIndicator), findsNothing);
+
+      FakeBili.responseDelay = const Duration(milliseconds: 400);
+      FakeBili.folders[13] = (
+        title: '儿童科普',
+        videos: [FakeBili.video('地球的奥秘', cover: 1)],
+      );
+
+      await tester.drag(
+          find.byType(CustomScrollView).first, const Offset(0, 300));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(CupertinoActivityIndicator), findsWidgets,
+          reason: '刷新请求进行中应显示加载指示器');
+
+      // 走完响应延迟 + 0.7s 最短可见时长 + 收起动画
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byType(CupertinoActivityIndicator), findsNothing,
+          reason: '刷新结束后指示器应收起');
+      expect(find.text('科普'), findsOneWidget);
+    });
+
     testWidgets('刷新后保持按 id 选中的收藏夹', (tester) async {
       await pumpApp(tester, MainShell(onLogout: () {}));
       await settle(tester);

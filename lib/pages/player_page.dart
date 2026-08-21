@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../api/bili_client.dart';
+import '../cast/dlna_cast.dart';
 import '../watch_history.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -24,6 +25,7 @@ class _PlayerPageState extends State<PlayerPage> {
   late final VideoController _controller = VideoController(_player);
 
   ViewInfo? _info;
+  final ValueNotifier<double> _rateN = ValueNotifier(1.0);
   final ValueNotifier<int> _currentN = ValueNotifier(0);
   int get _current => _currentN.value;
   set _current(int v) => _currentN.value = v;
@@ -60,6 +62,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _ticker?.cancel();
     _record();
     _currentN.dispose();
+    _rateN.dispose();
     _player.dispose();
     if (_immersive) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -117,6 +120,9 @@ class _PlayerPageState extends State<PlayerPage> {
       ));
       if (src.audioUrl != null) {
         await _player.setAudioTrack(AudioTrack.uri(src.audioUrl!));
+      }
+      if (_rateN.value != 1.0) {
+        await _player.setRate(_rateN.value);
       }
       if (resume) {
         // start 参数偶尔不生效时的兜底
@@ -186,6 +192,74 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
+  static const _rates = [0.75, 1.0, 1.25, 1.5, 2.0];
+
+  String _rateLabel(double r) =>
+      '${r.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '')}x';
+
+  void _pickRate() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('播放速度'),
+        actions: [
+          for (final r in _rates)
+            CupertinoActionSheetAction(
+              isDefaultAction: r == _rateN.value,
+              onPressed: () {
+                Navigator.pop(ctx);
+                _rateN.value = r;
+                _player.setRate(r);
+              },
+              child: Text(
+                  r == _rateN.value ? '${_rateLabel(r)} ✓' : _rateLabel(r)),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  Widget _rateButton() {
+    return ValueListenableBuilder<double>(
+      valueListenable: _rateN,
+      builder: (_, rate, __) {
+        final label = Text(
+          rate == 1.0 ? '倍速' : _rateLabel(rate),
+          style: const TextStyle(
+              color: Color(0xFFFFFFFF),
+              fontSize: 14,
+              fontWeight: FontWeight.w600),
+        );
+        return _isMobile
+            ? MaterialCustomButton(onPressed: _pickRate, icon: label)
+            : MaterialDesktopCustomButton(onPressed: _pickRate, icon: label);
+      },
+    );
+  }
+
+  void _showCast() {
+    final info = _info;
+    if (info == null) return;
+    final ep = info.episodes[_current];
+    showCastSheet(
+      context,
+      getUrl: () => BiliClient.i.castUrl(ep.bvid, ep.cid),
+      title: ep.title,
+      onCasting: () => _player.pause(),
+    );
+  }
+
+  Widget _castButton() {
+    const icon = Icon(Icons.cast);
+    return _isMobile
+        ? MaterialCustomButton(onPressed: _showCast, icon: icon)
+        : MaterialDesktopCustomButton(onPressed: _showCast, icon: icon);
+  }
+
   late final MaterialVideoControlsThemeData _mobileControlsTheme =
       MaterialVideoControlsThemeData(
     primaryButtonBar: [
@@ -196,6 +270,13 @@ class _PlayerPageState extends State<PlayerPage> {
       const Spacer(),
       _epButton(next: true, iconSize: 36),
       const Spacer(flex: 2),
+    ],
+    bottomButtonBar: [
+      const MaterialPositionIndicator(),
+      const Spacer(),
+      _rateButton(),
+      _castButton(),
+      const MaterialFullscreenButton(),
     ],
   );
 
@@ -208,6 +289,8 @@ class _PlayerPageState extends State<PlayerPage> {
       const MaterialDesktopVolumeButton(),
       const MaterialDesktopPositionIndicator(),
       const Spacer(),
+      _rateButton(),
+      _castButton(),
       const MaterialDesktopFullscreenButton(),
     ],
   );

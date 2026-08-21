@@ -42,6 +42,8 @@ dependencies:
   qr_flutter: ^4.1.0
   cached_network_image: ^3.4.1
   crypto: ^3.0.7
+  # DLNA 投屏：局域网发现电视并推送直链
+  dlna_dart: ^0.1.1
   flutter_localizations:
     sdk: flutter
   window_manager: ^0.5.2
