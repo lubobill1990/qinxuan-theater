@@ -1,7 +1,9 @@
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Icons;
 
+import '../cast/dlna_cast.dart';
 import '../library.dart';
 import '../models.dart';
 import '../widgets/video_card.dart';
@@ -88,8 +90,54 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
           ),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16, bottom: 78),
+                child: _castingPill(),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// 投屏中悬浮入口：点按回到投屏控制页
+  Widget _castingPill() {
+    return AnimatedBuilder(
+      animation: CastSession.i,
+      builder: (context, _) {
+        final s = CastSession.i;
+        if (!s.active) return const SizedBox.shrink();
+        return GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            CupertinoPageRoute(builder: (_) => PlayerPage(bvid: s.castKey)),
+          ),
+          child: _glass(
+            radius: BorderRadius.circular(24),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cast_connected,
+                      size: 20, color: CupertinoColors.activeBlue),
+                  SizedBox(width: 8),
+                  Text('投屏中',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: CupertinoColors.activeBlue)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

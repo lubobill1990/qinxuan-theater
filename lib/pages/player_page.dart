@@ -42,18 +42,31 @@ class _PlayerPageState extends State<PlayerPage> {
       if (done) _autoNext();
     });
     CastSession.i.addListener(_onCastChanged);
+    _wasCasting = _castingHere;
     ScreenAwake.acquire();
     _setup();
   }
 
-  /// 电视端自动连播后，把本页选中集数跟过去
+  bool _wasCasting = false;
+
+  bool get _castingHere =>
+      CastSession.i.active && CastSession.i.castKey == widget.bvid;
+
+  /// 电视端自动连播后，把本页选中集数跟过去；
+  /// 退出投屏时回落本地播放器接着播。
   void _onCastChanged() {
     if (!mounted) return;
-    if (CastSession.i.active && CastSession.i.index != _current) {
-      setState(() => _current = CastSession.i.index);
+    final s = CastSession.i;
+    if (_castingHere && s.index != _current) {
+      setState(() => _current = s.index);
+    } else if (_wasCasting && !s.active && _info != null) {
+      _play(_current,
+          resumeFrom: Duration(seconds: s.lastSessionPosSec));
+      setState(() {});
     } else {
       setState(() {});
     }
+    _wasCasting = _castingHere;
   }
 
   bool _advancing = false;
@@ -95,6 +108,16 @@ class _PlayerPageState extends State<PlayerPage> {
       }
       final info = await BiliClient.i.viewInfo(widget.bvid);
 
+      if (_castingHere) {
+        // 电视在播这个合集：只同步界面，不重推、不开本地播放
+        if (!mounted) return;
+        setState(() {
+          _info = info;
+          _current = CastSession.i.index;
+        });
+        return;
+      }
+
       await WatchHistory.i.load();
       var startIndex = info.initialIndex;
       var startPos = Duration.zero;
@@ -114,7 +137,6 @@ class _PlayerPageState extends State<PlayerPage> {
         _current = startIndex;
       });
       await _play(startIndex, resumeFrom: startPos);
-      _ticker = Timer.periodic(const Duration(seconds: 5), (_) => _record());
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
@@ -125,7 +147,19 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() => _current = index);
     if (CastSession.i.active) {
       try {
-        await CastSession.i.playIndex(index);
+        if (_castingHere) {
+          await CastSession.i.playIndex(index);
+        } else {
+          // 投屏中打开了另一个视频并点播：同设备换投新内容
+          final info = _info!;
+          await CastSession.i.castContent(
+            info.episodes,
+            index,
+            key: widget.bvid,
+            title: info.title,
+            cover: info.cover,
+          );
+        }
       } catch (e) {
         if (mounted) setState(() => _error = '$e');
       }
@@ -159,12 +193,14 @@ class _PlayerPageState extends State<PlayerPage> {
         });
       }
       _record();
+      _ticker ??= Timer.periodic(const Duration(seconds: 5), (_) => _record());
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
   }
 
   void _record() {
+    if (CastSession.i.active) return;
     final info = _info;
     if (info == null) {
       debugPrint('[history] skip: info null');
@@ -268,10 +304,17 @@ class _PlayerPageState extends State<PlayerPage> {
   void _showCast() {
     final info = _info;
     if (info == null) return;
+    final s = CastSession.i;
+    final startSec =
+        _castingHere ? s.posSec : _player.state.position.inSeconds;
     showCastSheet(
       context,
       episodes: info.episodes,
       index: _current,
+      castKey: widget.bvid,
+      title: info.title,
+      cover: info.cover,
+      startSec: startSec,
       onCasting: () => _player.pause(),
     );
   }
@@ -327,9 +370,6 @@ class _PlayerPageState extends State<PlayerPage> {
   );
 
   Widget _video() {
-    if (CastSession.i.active) {
-      return CastControlPanel(onShowDevices: _showCast);
-    }
     if (_isMobile) {
       return MaterialVideoControlsTheme(
         normal: _mobileControlsTheme,
@@ -355,16 +395,15 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   Widget build(BuildContext context) {
     final info = _info;
+    if (_castingHere) {
+      _setImmersive(false);
+      return CastPage(onShowDevices: _showCast);
+    }
     final mq = MediaQuery.of(context);
     final landscape = mq.orientation == Orientation.landscape;
     // 仅手机横屏自动全屏；iPad 常态横屏，保留分栏布局，全屏走控制条按钮。
-    // 投屏中不进全屏，保留选集列表方便跳转。
     final isPhone = _isMobile && mq.size.shortestSide < 600;
-    if (isPhone &&
-        landscape &&
-        info != null &&
-        _error == null &&
-        !CastSession.i.active) {
+    if (isPhone && landscape && info != null && _error == null) {
       _setImmersive(true);
       return CupertinoPageScaffold(
         backgroundColor: const Color(0xFF000000),

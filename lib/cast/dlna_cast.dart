@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import '../api/bili_client.dart';
 import '../models.dart';
 import '../screen_awake.dart';
+import '../watch_history.dart';
 
 /// 全局投屏会话：离开播放页后电视继续播，并轮询进度自动推下一集。
 class CastSession extends ChangeNotifier {
@@ -30,6 +31,14 @@ class CastSession extends ChangeNotifier {
   /// 直链清晰度：16=360P 32=480P 64=720P 80=1080P
   int qn = 80;
 
+  /// 正在投的合集元信息（写观看历史、悬浮入口跳转用）
+  String castKey = '';
+  String castTitle = '';
+  String castCover = '';
+
+  /// stop() 前的进度快照，供播放页回落本地续播
+  int lastSessionPosSec = 0;
+
   bool get active => _device != null;
   String get deviceName => _device?.info.friendlyName ?? '';
   int get index => _index;
@@ -37,20 +46,77 @@ class CastSession extends ChangeNotifier {
   Episode? get currentEpisode =>
       active && _index < _episodes.length ? _episodes[_index] : null;
 
-  Future<void> start(DLNADevice device, List<Episode> episodes, int index) async {
-    if (_device == null) ScreenAwake.acquire();
+  Future<void> start(
+    DLNADevice device,
+    List<Episode> episodes,
+    int index, {
+    required String key,
+    required String title,
+    required String cover,
+    int startSec = 0,
+  }) async {
+    final old = _device;
+    final oldEpisodes = _episodes;
+    final oldKey = castKey, oldTitle = castTitle, oldCover = castCover;
+    if (old == null) ScreenAwake.acquire();
     _device = device;
     _episodes = episodes;
+    castKey = key;
+    castTitle = title;
+    castCover = cover;
     try {
       await _push(index);
     } catch (_) {
-      _device = null;
-      ScreenAwake.release();
+      _device = old;
+      _episodes = oldEpisodes;
+      castKey = oldKey;
+      castTitle = oldTitle;
+      castCover = oldCover;
+      if (old == null) ScreenAwake.release();
       rethrow;
+    }
+    await _seekAfterPush(startSec);
+    if (old != null && !identical(old, device)) {
+      try {
+        await old.stop();
+      } catch (_) {}
     }
     _poller?.cancel();
     _poller = Timer.periodic(const Duration(seconds: 4), (_) => _tick());
     notifyListeners();
+  }
+
+  Future<void> _seekAfterPush(int sec) async {
+    if (sec <= 5) return;
+    try {
+      await _device!.seek(_hms(sec));
+      posSec = sec;
+      _lastRel = sec;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// 投屏中换一个视频：同设备重推新内容。
+  Future<void> castContent(
+    List<Episode> eps,
+    int index, {
+    required String key,
+    required String title,
+    required String cover,
+    int startSec = 0,
+  }) async {
+    if (!active || _pushing) return;
+    _pushing = true;
+    _episodes = eps;
+    castKey = key;
+    castTitle = title;
+    castCover = cover;
+    try {
+      await _push(index);
+      await _seekAfterPush(startSec);
+    } finally {
+      _pushing = false;
+    }
   }
 
   Future<void> _push(int i) async {
@@ -207,6 +273,7 @@ class CastSession extends ChangeNotifier {
       _zeroTicks = 0;
     }
     notifyListeners();
+    _recordHistory();
     if (paused) return;
     if (dur - rel <= 3) {
       await _advance();
@@ -234,9 +301,27 @@ class CastSession extends ChangeNotifier {
     }
   }
 
+  void _recordHistory() {
+    if (castKey.isEmpty || durSec <= 0 || posSec < 3) return;
+    final ep = currentEpisode;
+    if (ep == null) return;
+    final nearEnd = durSec - posSec < 10 && posSec > durSec * 0.9;
+    WatchHistory.i.record(HistoryEntry(
+      key: castKey,
+      title: castTitle,
+      cover: castCover.isNotEmpty ? castCover : ep.cover,
+      epBvid: ep.bvid,
+      cid: ep.cid,
+      epTitle: ep.title,
+      positionMs: nearEnd ? 0 : posSec * 1000,
+      durationMs: durSec * 1000,
+    ));
+  }
+
   Future<void> stop() async {
     _poller?.cancel();
     _poller = null;
+    lastSessionPosSec = posSec;
     final d = _device;
     if (d != null) ScreenAwake.release();
     _device = null;
@@ -257,22 +342,41 @@ Future<void> showCastSheet(
   BuildContext context, {
   required List<Episode> episodes,
   required int index,
+  required String castKey,
+  required String title,
+  required String cover,
+  int startSec = 0,
   required VoidCallback onCasting,
 }) {
   return showCupertinoModalPopup(
     context: context,
-    builder: (_) =>
-        _CastSheet(episodes: episodes, index: index, onCasting: onCasting),
+    builder: (_) => _CastSheet(
+      episodes: episodes,
+      index: index,
+      castKey: castKey,
+      title: title,
+      cover: cover,
+      startSec: startSec,
+      onCasting: onCasting,
+    ),
   );
 }
 
 class _CastSheet extends StatefulWidget {
   final List<Episode> episodes;
   final int index;
+  final String castKey;
+  final String title;
+  final String cover;
+  final int startSec;
   final VoidCallback onCasting;
   const _CastSheet({
     required this.episodes,
     required this.index,
+    required this.castKey,
+    required this.title,
+    required this.cover,
+    required this.startSec,
     required this.onCasting,
   });
 
@@ -325,10 +429,19 @@ class _CastSheetState extends State<_CastSheet> {
       _error = null;
     });
     try {
-      if (CastSession.i.active) {
+      if (CastSession.i.active && CastSession.i.castKey == widget.castKey) {
         await CastSession.i.switchDevice(device);
       } else {
-        await CastSession.i.start(device, widget.episodes, widget.index);
+        // 未投屏，或投屏中打开了另一个视频：直接投新内容（旧设备会被停掉）
+        await CastSession.i.start(
+          device,
+          widget.episodes,
+          widget.index,
+          key: widget.castKey,
+          title: widget.title,
+          cover: widget.cover,
+          startSec: widget.startSec,
+        );
         widget.onCasting();
       }
       if (mounted) Navigator.pop(context);
