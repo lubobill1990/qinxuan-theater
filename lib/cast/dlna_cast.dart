@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../api/bili_client.dart';
 import '../models.dart';
+import '../screen_awake.dart';
 
 /// 全局投屏会话：离开播放页后电视继续播，并轮询进度自动推下一集。
 class CastSession extends ChangeNotifier {
@@ -18,18 +19,22 @@ class CastSession extends ChangeNotifier {
   Timer? _poller;
   bool _pushing = false;
   bool _sawNearEnd = false;
+  int _lastRel = 0;
+  int _zeroTicks = 0;
 
   bool get active => _device != null;
   String get deviceName => _device?.info.friendlyName ?? '';
   int get index => _index;
 
   Future<void> start(DLNADevice device, List<Episode> episodes, int index) async {
+    if (_device == null) ScreenAwake.acquire();
     _device = device;
     _episodes = episodes;
     try {
       await _push(index);
     } catch (_) {
       _device = null;
+      ScreenAwake.release();
       rethrow;
     }
     _poller?.cancel();
@@ -44,6 +49,8 @@ class CastSession extends ChangeNotifier {
     await _device!.play();
     _index = i;
     _sawNearEnd = false;
+    _lastRel = 0;
+    _zeroTicks = 0;
     notifyListeners();
   }
 
@@ -71,7 +78,16 @@ class CastSession extends ChangeNotifier {
     }
     final dur = p.TrackDurationInt;
     final rel = p.RelTimeInt;
-    if (dur <= 0) return;
+    if (dur <= 0) {
+      // app 被挂起期间电视播完并回到待机：曾播到 30s 以上、
+      // 现在连时长都查不到，连续两个周期即视为播完，补推下一集
+      if (_lastRel > 30 && ++_zeroTicks >= 2) await _advance();
+      return;
+    }
+    if (rel > _lastRel) {
+      _lastRel = rel;
+      _zeroTicks = 0;
+    }
     if (dur - rel <= 3) {
       await _advance();
     } else if (dur - rel <= 20 && rel > 0) {
@@ -79,6 +95,9 @@ class CastSession extends ChangeNotifier {
     } else if (_sawNearEnd && rel <= 2) {
       // 快到片尾后进度回零：电视已播完并复位
       await _advance();
+    } else if (rel == 0 && _lastRel > 30) {
+      // 解锁回来发现进度归零（电视已播完重置），连续两个周期确认后补推
+      if (++_zeroTicks >= 2) await _advance();
     }
   }
 
@@ -99,6 +118,7 @@ class CastSession extends ChangeNotifier {
     _poller?.cancel();
     _poller = null;
     final d = _device;
+    if (d != null) ScreenAwake.release();
     _device = null;
     notifyListeners();
     try {

@@ -10,6 +10,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../api/bili_client.dart';
 import '../cast/dlna_cast.dart';
+import '../screen_awake.dart';
 import '../watch_history.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -40,6 +41,7 @@ class _PlayerPageState extends State<PlayerPage> {
       if (done) _autoNext();
     });
     CastSession.i.addListener(_onCastChanged);
+    ScreenAwake.acquire();
     _setup();
   }
 
@@ -70,6 +72,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     CastSession.i.removeListener(_onCastChanged);
+    ScreenAwake.release();
     _completedSub?.cancel();
     _ticker?.cancel();
     _record();

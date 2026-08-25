@@ -47,6 +47,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   window_manager: ^0.5.2
+  wakelock_plus: ^1.4.0
 
 dev_dependencies:
   flutter_test:
