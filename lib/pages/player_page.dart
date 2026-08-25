@@ -77,10 +77,27 @@ class _PlayerPageState extends State<PlayerPage> {
     if (_current + 1 >= info.episodes.length) return;
     _advancing = true;
     try {
-      await _play(_current + 1);
+      await _play(_current + 1, resumeFrom: _savedPos(_current + 1));
     } finally {
       _advancing = false;
     }
+  }
+
+  /// 该集在观看历史里的进度（看完的集记 0，自然从头播）
+  Duration _savedPos(int i) {
+    final info = _info;
+    if (info == null || i < 0 || i >= info.episodes.length) {
+      return Duration.zero;
+    }
+    final ep = info.episodes[i];
+    final h = WatchHistory.i.find(widget.bvid);
+    return Duration(milliseconds: h?.posFor(ep.bvid, ep.cid) ?? 0);
+  }
+
+  /// 点选集：点当前集无动作，点其他集按该集历史进度续播
+  void _tapEpisode(int i) {
+    if (i == _current) return;
+    _play(i, resumeFrom: _savedPos(i));
   }
 
   @override
@@ -158,6 +175,7 @@ class _PlayerPageState extends State<PlayerPage> {
             key: widget.bvid,
             title: info.title,
             cover: info.cover,
+            startSec: resumeFrom.inSeconds,
           );
         }
       } catch (e) {
@@ -245,9 +263,11 @@ class _PlayerPageState extends State<PlayerPage> {
             Icon(next ? Icons.skip_next : Icons.skip_previous, size: iconSize);
         return _isMobile
             ? MaterialCustomButton(
-                onPressed: () => _play(target), icon: icon, iconSize: iconSize)
+                onPressed: () => _tapEpisode(target),
+                icon: icon,
+                iconSize: iconSize)
             : MaterialDesktopCustomButton(
-                onPressed: () => _play(target), icon: icon);
+                onPressed: () => _tapEpisode(target), icon: icon);
       },
     );
   }
@@ -517,7 +537,7 @@ class _PlayerPageState extends State<PlayerPage> {
               final ep = info.episodes[i];
               final active = i == _current;
               return GestureDetector(
-                onTap: () => _play(i),
+                onTap: () => _tapEpisode(i),
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(

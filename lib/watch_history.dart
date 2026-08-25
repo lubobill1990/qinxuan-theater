@@ -14,6 +14,9 @@ class HistoryEntry {
   final int durationMs;
   final int updatedAt;
 
+  /// 各集进度表：'epBvid:cid' → positionMs（看完的集记 0）
+  final Map<String, int> epPositions;
+
   HistoryEntry({
     required this.key,
     required this.title,
@@ -24,7 +27,11 @@ class HistoryEntry {
     required this.positionMs,
     required this.durationMs,
     int? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+    Map<String, int>? epPositions,
+  })  : updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        epPositions = epPositions ?? {};
+
+  int posFor(String epBvid, int cid) => epPositions['$epBvid:$cid'] ?? 0;
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -36,6 +43,7 @@ class HistoryEntry {
         'positionMs': positionMs,
         'durationMs': durationMs,
         'updatedAt': updatedAt,
+        'epPositions': epPositions,
       };
 
   factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
@@ -48,6 +56,8 @@ class HistoryEntry {
         positionMs: j['positionMs'] as int,
         durationMs: j['durationMs'] as int,
         updatedAt: j['updatedAt'] as int,
+        epPositions: (j['epPositions'] as Map<String, dynamic>?)
+            ?.map((k, v) => MapEntry(k, v as int)),
       );
 }
 
@@ -105,8 +115,23 @@ class WatchHistory {
 
   Future<void> record(HistoryEntry e) async {
     await load();
+    // 继承同合集里其他集的进度，并更新当前集的
+    final positions = {...?find(e.key)?.epPositions, ...e.epPositions};
+    positions['${e.epBvid}:${e.cid}'] = e.positionMs;
+    final merged = HistoryEntry(
+      key: e.key,
+      title: e.title,
+      cover: e.cover,
+      epBvid: e.epBvid,
+      cid: e.cid,
+      epTitle: e.epTitle,
+      positionMs: e.positionMs,
+      durationMs: e.durationMs,
+      updatedAt: e.updatedAt,
+      epPositions: positions,
+    );
     entries.removeWhere((x) => x.key == e.key);
-    entries.insert(0, e);
+    entries.insert(0, merged);
     if (entries.length > 200) entries.removeRange(200, entries.length);
     version.value++;
     await _save();

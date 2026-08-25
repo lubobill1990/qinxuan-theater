@@ -201,12 +201,21 @@ class CastSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 投屏中切集（选集/上一集/下一集都走这里）。
+  /// 该集在观看历史里的进度（秒），看完的集记 0 自然从头播
+  int _savedSecFor(int i) {
+    final ep = _episodes[i];
+    return (WatchHistory.i.find(castKey)?.posFor(ep.bvid, ep.cid) ?? 0) ~/
+        1000;
+  }
+
+  /// 投屏中切集（选集/上一集/下一集都走这里），按该集历史进度续播。
   Future<void> playIndex(int i) async {
     if (!active || _pushing || i < 0 || i >= _episodes.length) return;
+    if (i == _index) return;
     _pushing = true;
     try {
       await _push(i);
+      await _seekWhenReady(_savedSecFor(i));
     } finally {
       _pushing = false;
     }
@@ -349,9 +358,11 @@ class CastSession extends ChangeNotifier {
   Future<void> _advance() async {
     _sawNearEnd = false;
     if (_index + 1 >= _episodes.length) return;
+    final next = _index + 1;
     _pushing = true;
     try {
-      await _push(_index + 1);
+      await _push(next);
+      await _seekWhenReady(_savedSecFor(next));
     } catch (_) {
       // 下一集推送失败（如网络抖动），下个轮询周期还有机会重试
     } finally {
