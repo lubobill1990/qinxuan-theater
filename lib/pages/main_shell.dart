@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Icons;
 
@@ -74,30 +75,26 @@ class _MainShellState extends State<MainShell> {
               minimum: const EdgeInsets.only(bottom: 12),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: ScaleTransition(
-                      scale: Tween(begin: 0.92, end: 1.0).animate(anim),
-                      child: child,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _castingBar(),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: ScaleTransition(
+                          scale: Tween(begin: 0.92, end: 1.0).animate(anim),
+                          child: child,
+                        ),
+                      ),
+                      child:
+                          _searchActive ? _expandedSearch() : _collapsedBar(),
                     ),
-                  ),
-                  child: _searchActive ? _expandedSearch() : _collapsedBar(),
+                  ],
                 ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: SafeArea(
-              top: false,
-              minimum: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.only(right: 16, bottom: 78),
-                child: _castingPill(),
               ),
             ),
           ),
@@ -106,33 +103,90 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  /// 投屏中悬浮入口：点按回到投屏控制页
-  Widget _castingPill() {
+  /// 投屏中 mini player 条：悬浮在 tab 栏上方，点击进投屏控制页
+  Widget _castingBar() {
     return AnimatedBuilder(
       animation: CastSession.i,
       builder: (context, _) {
         final s = CastSession.i;
         if (!s.active) return const SizedBox.shrink();
-        return GestureDetector(
-          onTap: () => Navigator.of(context).push(
-            CupertinoPageRoute(builder: (_) => PlayerPage(bvid: s.castKey)),
-          ),
-          child: _glass(
-            radius: BorderRadius.circular(24),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.cast_connected,
-                      size: 20, color: CupertinoColors.activeBlue),
-                  SizedBox(width: 8),
-                  Text('投屏中',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: CupertinoColors.activeBlue)),
-                ],
+        final ep = s.currentEpisode;
+        final cover = s.castCover.isNotEmpty ? s.castCover : (ep?.cover ?? '');
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).push(
+              CupertinoPageRoute(builder: (_) => PlayerPage(bvid: s.castKey)),
+            ),
+            child: _glass(
+              radius: BorderRadius.circular(18),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 64,
+                        height: 36,
+                        child: cover.isEmpty
+                            ? const ColoredBox(
+                                color: CupertinoColors.tertiarySystemFill)
+                            : CachedNetworkImage(
+                                imageUrl: cover,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => const ColoredBox(
+                                    color:
+                                        CupertinoColors.tertiarySystemFill),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.cast_connected,
+                                  size: 12, color: CupertinoColors.activeBlue),
+                              SizedBox(width: 4),
+                              Text('投屏中',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: CupertinoColors.activeBlue)),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            ep?.title ?? s.castTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: CupertinoColors.label),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: const EdgeInsets.all(10),
+                      onPressed: () => s.paused ? s.resume() : s.pause(),
+                      child: Icon(
+                        s.paused
+                            ? CupertinoIcons.play_fill
+                            : CupertinoIcons.pause_fill,
+                        size: 22,
+                        color: CupertinoColors.label,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
