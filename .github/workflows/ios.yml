@@ -37,8 +37,9 @@ jobs:
       # 每次构建前把之前 CI 生成的 "Created via API" 证书清掉。
       - name: Revoke stale CI-created dev certificates
         run: |
-          pip3 install --quiet 'pyjwt[crypto]' requests
-          python3 - <<'EOF'
+          python3 -m venv /tmp/certclean
+          /tmp/certclean/bin/pip install --quiet 'pyjwt[crypto]' requests
+          /tmp/certclean/bin/python - <<'EOF'
           import jwt, time, requests, os
           key = open(os.path.expanduser('~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8')).read()
           token = jwt.encode(
