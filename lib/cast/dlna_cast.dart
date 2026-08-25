@@ -107,24 +107,57 @@ class CastSession extends ChangeNotifier {
     }
   }
 
-  /// 新内容推送后等电视加载完成再 seek——立刻 seek 会被部分电视忽略。
+  /// 新内容推送后把电视 seek 到指定位置并确认生效。
+  /// 太早 seek 会打在还没卸载的旧片源上或被直接吞掉，所以先等
+  /// TrackURI 换成新直链再 seek；seek 后还要验证进度真的跳了过去，
+  /// 验证成功前不改 _lastRel，避免「进度归零=播完」误判触发连播重推。
   Future<void> _seekWhenReady(int sec) async {
     final d = _device;
     if (d == null || sec <= 5) return;
-    for (var i = 0; i < 10; i++) {
+    posSec = sec; // 乐观显示目标进度，随后校准
+    notifyListeners();
+    var loaded = false;
+    var attempts = 0;
+    var seekAt = -10;
+    for (var i = 0; i < 20; i++) {
       await Future.delayed(const Duration(seconds: 1));
       if (!identical(d, _device)) return;
+      PositionParser p;
       try {
-        if (PositionParser(await d.position()).TrackDurationInt > 0) {
+        p = PositionParser(await d.position());
+      } catch (_) {
+        continue;
+      }
+      final dur = p.TrackDurationInt;
+      final rel = p.RelTimeInt;
+      if (!loaded) loaded = p.TrackURI == _lastUrl || rel <= 5;
+      if (!loaded || dur <= 0) continue;
+      if (rel >= 5 && rel >= sec - 15) {
+        durSec = dur;
+        posSec = rel;
+        _lastRel = rel;
+        _zeroTicks = 0;
+        _sawNearEnd = dur - rel <= 20;
+        notifyListeners();
+        return;
+      }
+      if (attempts < 3 && i - seekAt >= 3) {
+        attempts++;
+        seekAt = i;
+        try {
           await d.seek(_hms(sec));
-          posSec = sec;
-          _lastRel = sec;
-          _sawNearEnd = false;
-          notifyListeners();
-          return;
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }
+    // 电视始终不认这个 seek，接受从头播，把本地状态校准回真实进度
+    try {
+      final p = PositionParser(await d.position());
+      posSec = p.RelTimeInt;
+    } catch (_) {
+      posSec = 0;
+    }
+    _lastRel = posSec;
+    notifyListeners();
   }
 
   /// 投屏中换一个视频：同设备重推新内容。
@@ -150,11 +183,14 @@ class CastSession extends ChangeNotifier {
     }
   }
 
+  String _lastUrl = '';
+
   Future<void> _push(int i) async {
     final ep = _episodes[i];
     final url = await BiliClient.i.castUrl(ep.bvid, ep.cid, qn: qn);
     await _device!.setUrl(url, title: ep.title);
     await _device!.play();
+    _lastUrl = url;
     _index = i;
     _sawNearEnd = false;
     _lastRel = 0;
