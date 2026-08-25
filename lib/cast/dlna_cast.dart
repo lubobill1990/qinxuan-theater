@@ -22,9 +22,20 @@ class CastSession extends ChangeNotifier {
   int _lastRel = 0;
   int _zeroTicks = 0;
 
+  /// 电视端播放进度/时长（秒），由轮询刷新
+  int posSec = 0;
+  int durSec = 0;
+  bool paused = false;
+
+  /// 直链清晰度：16=360P 32=480P 64=720P 80=1080P
+  int qn = 80;
+
   bool get active => _device != null;
   String get deviceName => _device?.info.friendlyName ?? '';
   int get index => _index;
+  List<Episode> get episodes => _episodes;
+  Episode? get currentEpisode =>
+      active && _index < _episodes.length ? _episodes[_index] : null;
 
   Future<void> start(DLNADevice device, List<Episode> episodes, int index) async {
     if (_device == null) ScreenAwake.acquire();
@@ -44,13 +55,16 @@ class CastSession extends ChangeNotifier {
 
   Future<void> _push(int i) async {
     final ep = _episodes[i];
-    final url = await BiliClient.i.castUrl(ep.bvid, ep.cid);
+    final url = await BiliClient.i.castUrl(ep.bvid, ep.cid, qn: qn);
     await _device!.setUrl(url, title: ep.title);
     await _device!.play();
     _index = i;
     _sawNearEnd = false;
     _lastRel = 0;
     _zeroTicks = 0;
+    posSec = 0;
+    durSec = 0;
+    paused = false;
     notifyListeners();
   }
 
@@ -65,6 +79,106 @@ class CastSession extends ChangeNotifier {
     }
   }
 
+  Future<void> pause() async {
+    final d = _device;
+    if (d == null) return;
+    paused = true;
+    notifyListeners();
+    try {
+      await d.pause();
+    } catch (_) {
+      paused = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resume() async {
+    final d = _device;
+    if (d == null) return;
+    paused = false;
+    notifyListeners();
+    try {
+      await d.play();
+    } catch (_) {}
+  }
+
+  static String _hms(int s) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(s ~/ 3600)}:${two((s % 3600) ~/ 60)}:${two(s % 60)}';
+  }
+
+  Future<void> seekTo(int sec) async {
+    final d = _device;
+    if (d == null) return;
+    if (durSec > 0) sec = sec.clamp(0, durSec);
+    if (sec < 0) sec = 0;
+    posSec = sec;
+    _lastRel = sec;
+    _zeroTicks = 0;
+    _sawNearEnd = durSec > 0 && durSec - sec <= 20;
+    notifyListeners();
+    try {
+      await d.seek(_hms(sec));
+    } catch (_) {}
+  }
+
+  Future<void> seekBy(int delta) => seekTo(posSec + delta);
+
+  /// 切清晰度：重推当前集并跳回原进度。
+  Future<void> setQuality(int newQn) async {
+    if (!active || _pushing || newQn == qn) return;
+    qn = newQn;
+    final pos = posSec;
+    _pushing = true;
+    try {
+      await _push(_index);
+      if (pos > 5) {
+        await _device!.seek(_hms(pos));
+        posSec = pos;
+        _lastRel = pos;
+        notifyListeners();
+      }
+    } finally {
+      _pushing = false;
+    }
+  }
+
+  /// 换投屏设备：新设备接着当前进度播，旧设备停。
+  Future<void> switchDevice(DLNADevice d) async {
+    final old = _device;
+    if (old == null || _pushing) return;
+    final pos = posSec;
+    _pushing = true;
+    _device = d;
+    try {
+      await _push(_index);
+      if (pos > 5) {
+        await d.seek(_hms(pos));
+        posSec = pos;
+        _lastRel = pos;
+        notifyListeners();
+      }
+    } catch (_) {
+      _device = old;
+      notifyListeners();
+      rethrow;
+    } finally {
+      _pushing = false;
+    }
+    try {
+      await old.stop();
+    } catch (_) {}
+  }
+
+  /// 调电视音量（DLNA RenderingControl，先查再设）。
+  Future<void> changeTvVolume(int delta) async {
+    final d = _device;
+    if (d == null) return;
+    try {
+      await d.changeVolume(delta);
+    } catch (_) {}
+  }
+
   Future<void> _tick() async {
     final d = _device;
     if (d == null || _pushing) return;
@@ -73,7 +187,7 @@ class CastSession extends ChangeNotifier {
       p = PositionParser(await d.position());
     } catch (_) {
       // 有些电视播完直接结束会话，进度查询开始报错
-      if (_sawNearEnd) await _advance();
+      if (_sawNearEnd && !paused) await _advance();
       return;
     }
     final dur = p.TrackDurationInt;
@@ -81,13 +195,19 @@ class CastSession extends ChangeNotifier {
     if (dur <= 0) {
       // app 被挂起期间电视播完并回到待机：曾播到 30s 以上、
       // 现在连时长都查不到，连续两个周期即视为播完，补推下一集
-      if (_lastRel > 30 && ++_zeroTicks >= 2) await _advance();
+      if (!paused && _lastRel > 30 && ++_zeroTicks >= 2) await _advance();
       return;
     }
+    durSec = dur;
+    posSec = rel;
     if (rel > _lastRel) {
+      // 电视遥控器直接恢复了播放
+      if (paused) paused = false;
       _lastRel = rel;
       _zeroTicks = 0;
     }
+    notifyListeners();
+    if (paused) return;
     if (dur - rel <= 3) {
       await _advance();
     } else if (dur - rel <= 20 && rel > 0) {
@@ -120,6 +240,9 @@ class CastSession extends ChangeNotifier {
     final d = _device;
     if (d != null) ScreenAwake.release();
     _device = null;
+    posSec = 0;
+    durSec = 0;
+    paused = false;
     notifyListeners();
     try {
       await d?.stop();
@@ -128,6 +251,7 @@ class CastSession extends ChangeNotifier {
 }
 
 /// 弹出投屏面板：搜索局域网 DLNA 设备，点选后投当前集并自动连播。
+/// 投屏中再次打开可换设备或停止投屏。
 /// 投屏成功后回调 [onCasting]（用于暂停本地播放器）。
 Future<void> showCastSheet(
   BuildContext context, {
@@ -176,7 +300,8 @@ class _CastSheetState extends State<_CastSheet> {
 
   Future<void> _search() async {
     try {
-      final dm = await _manager.start();
+      // reusePort：B 站等 app 投屏时会占住 SSDP 的 1900 端口，必须共享绑定
+      final dm = await _manager.start(reusePort: true);
       // devices 是单订阅流，每次打开面板都新建 DeviceManager，不能复用
       _sub = dm.devices.stream.listen((map) {
         if (mounted) setState(() => _devices = map.values.toList());
@@ -200,8 +325,13 @@ class _CastSheetState extends State<_CastSheet> {
       _error = null;
     });
     try {
-      await CastSession.i.start(device, widget.episodes, widget.index);
-      widget.onCasting();
+      if (CastSession.i.active) {
+        await CastSession.i.switchDevice(device);
+      } else {
+        await CastSession.i.start(device, widget.episodes, widget.index);
+        widget.onCasting();
+      }
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       _error = '投屏失败：$e';
     }
@@ -211,9 +341,14 @@ class _CastSheetState extends State<_CastSheet> {
   @override
   Widget build(BuildContext context) {
     final casting = CastSession.i.active;
+    final others = casting
+        ? _devices
+            .where((d) => d.info.friendlyName != CastSession.i.deviceName)
+            .toList()
+        : _devices;
     return CupertinoActionSheet(
       title: casting
-          ? Text('正在投屏到「${CastSession.i.deviceName}」\n播完一集会自动放下一集')
+          ? Text('正在投屏到「${CastSession.i.deviceName}」')
           : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
@@ -227,22 +362,28 @@ class _CastSheetState extends State<_CastSheet> {
           ? Text(_error!)
           : _connecting
               ? const Text('正在连接…')
-              : !casting && _devices.isEmpty
-                  ? const Text('正在搜索局域网里的电视/投屏设备…\n请确认手机和电视连着同一个 Wi-Fi')
-                  : null,
+              : casting
+                  ? (others.isEmpty
+                      ? const Text('正在搜索其他可投屏的设备…')
+                      : const Text('点其他设备可直接换过去接着播'))
+                  : _devices.isEmpty
+                      ? const Text('正在搜索局域网里的电视/投屏设备…\n请确认手机和电视连着同一个 Wi-Fi')
+                      : null,
       actions: [
+        for (final d in others)
+          CupertinoActionSheetAction(
+            onPressed: _connecting ? () {} : () => _cast(d),
+            child: Text(casting ? '换到「${d.info.friendlyName}」' : d.info.friendlyName),
+          ),
         if (casting)
           CupertinoActionSheetAction(
             isDestructiveAction: true,
-            onPressed: () => CastSession.i.stop(),
+            onPressed: () {
+              CastSession.i.stop();
+              Navigator.pop(context);
+            },
             child: const Text('停止投屏'),
-          )
-        else
-          for (final d in _devices)
-            CupertinoActionSheetAction(
-              onPressed: _connecting ? () {} : () => _cast(d),
-              child: Text(d.info.friendlyName),
-            ),
+          ),
       ],
       cancelButton: CupertinoActionSheetAction(
         onPressed: () => Navigator.pop(context),

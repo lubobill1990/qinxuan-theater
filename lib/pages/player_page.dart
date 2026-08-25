@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../api/bili_client.dart';
+import '../cast/cast_panel.dart';
 import '../cast/dlna_cast.dart';
 import '../screen_awake.dart';
 import '../watch_history.dart';
@@ -326,6 +327,9 @@ class _PlayerPageState extends State<PlayerPage> {
   );
 
   Widget _video() {
+    if (CastSession.i.active) {
+      return CastControlPanel(onShowDevices: _showCast);
+    }
     if (_isMobile) {
       return MaterialVideoControlsTheme(
         normal: _mobileControlsTheme,
@@ -353,9 +357,14 @@ class _PlayerPageState extends State<PlayerPage> {
     final info = _info;
     final mq = MediaQuery.of(context);
     final landscape = mq.orientation == Orientation.landscape;
-    // 仅手机横屏自动全屏；iPad 常态横屏，保留分栏布局，全屏走控制条按钮
+    // 仅手机横屏自动全屏；iPad 常态横屏，保留分栏布局，全屏走控制条按钮。
+    // 投屏中不进全屏，保留选集列表方便跳转。
     final isPhone = _isMobile && mq.size.shortestSide < 600;
-    if (isPhone && landscape && info != null && _error == null) {
+    if (isPhone &&
+        landscape &&
+        info != null &&
+        _error == null &&
+        !CastSession.i.active) {
       _setImmersive(true);
       return CupertinoPageScaffold(
         backgroundColor: const Color(0xFF000000),

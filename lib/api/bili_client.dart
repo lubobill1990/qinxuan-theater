@@ -276,12 +276,12 @@ class BiliClient {
 
   /// 投屏用直链：html5 平台返回单文件 mp4（durl），
   /// 电视不会带 Referer，这种直链没有防盗链限制才能播。
-  Future<String> castUrl(String bvid, int cid) async {
+  Future<String> castUrl(String bvid, int cid, {int qn = 80}) async {
     final d = await _get('https://api.bilibili.com/x/player/wbi/playurl',
         params: {
           'bvid': bvid,
           'cid': cid,
-          'qn': 80,
+          'qn': qn,
           'fnval': 1,
           'fnver': 0,
           'platform': 'html5',
