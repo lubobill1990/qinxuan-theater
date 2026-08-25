@@ -39,7 +39,18 @@ class _PlayerPageState extends State<PlayerPage> {
     _completedSub = _player.stream.completed.listen((done) {
       if (done) _autoNext();
     });
+    CastSession.i.addListener(_onCastChanged);
     _setup();
+  }
+
+  /// 电视端自动连播后，把本页选中集数跟过去
+  void _onCastChanged() {
+    if (!mounted) return;
+    if (CastSession.i.active && CastSession.i.index != _current) {
+      setState(() => _current = CastSession.i.index);
+    } else {
+      setState(() {});
+    }
   }
 
   bool _advancing = false;
@@ -58,6 +69,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    CastSession.i.removeListener(_onCastChanged);
     _completedSub?.cancel();
     _ticker?.cancel();
     _record();
@@ -107,6 +119,14 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _play(int index, {Duration resumeFrom = Duration.zero}) async {
     final ep = _info!.episodes[index];
     setState(() => _current = index);
+    if (CastSession.i.active) {
+      try {
+        await CastSession.i.playIndex(index);
+      } catch (e) {
+        if (mounted) setState(() => _error = '$e');
+      }
+      return;
+    }
     try {
       final src = await BiliClient.i.playUrl(ep.bvid, ep.cid);
       final resume = resumeFrom > const Duration(seconds: 5);
@@ -244,20 +264,27 @@ class _PlayerPageState extends State<PlayerPage> {
   void _showCast() {
     final info = _info;
     if (info == null) return;
-    final ep = info.episodes[_current];
     showCastSheet(
       context,
-      getUrl: () => BiliClient.i.castUrl(ep.bvid, ep.cid),
-      title: ep.title,
+      episodes: info.episodes,
+      index: _current,
       onCasting: () => _player.pause(),
     );
   }
 
   Widget _castButton() {
-    const icon = Icon(Icons.cast);
-    return _isMobile
-        ? MaterialCustomButton(onPressed: _showCast, icon: icon)
-        : MaterialDesktopCustomButton(onPressed: _showCast, icon: icon);
+    return AnimatedBuilder(
+      animation: CastSession.i,
+      builder: (_, __) {
+        final icon = CastSession.i.active
+            ? const Icon(Icons.cast_connected,
+                color: CupertinoColors.activeBlue)
+            : const Icon(Icons.cast);
+        return _isMobile
+            ? MaterialCustomButton(onPressed: _showCast, icon: icon)
+            : MaterialDesktopCustomButton(onPressed: _showCast, icon: icon);
+      },
+    );
   }
 
   late final MaterialVideoControlsThemeData _mobileControlsTheme =
