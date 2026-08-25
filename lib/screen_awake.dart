@@ -12,4 +12,10 @@ class ScreenAwake {
   static void release() {
     if (_n > 0 && --_n == 0) WakelockPlus.disable();
   }
+
+  /// iOS 的 idleTimerDisabled 是全局开关，media_kit 的 Video 组件在
+  /// 本地播放器暂停时会擅自关掉它，投屏轮询里周期性重新断言。
+  static void refresh() {
+    if (_n > 0) WakelockPlus.enable();
+  }
 }

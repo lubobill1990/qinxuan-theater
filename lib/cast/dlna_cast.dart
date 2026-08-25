@@ -18,6 +18,7 @@ class CastSession extends ChangeNotifier {
   List<Episode> _episodes = const [];
   int _index = 0;
   Timer? _poller;
+  int _pollCount = 0;
   bool _pushing = false;
   bool _sawNearEnd = false;
   int _lastRel = 0;
@@ -59,6 +60,7 @@ class CastSession extends ChangeNotifier {
     final oldEpisodes = _episodes;
     final oldKey = castKey, oldTitle = castTitle, oldCover = castCover;
     if (old == null) ScreenAwake.acquire();
+    _poller?.cancel();
     _device = device;
     _episodes = episodes;
     castKey = key;
@@ -72,28 +74,57 @@ class CastSession extends ChangeNotifier {
       castKey = oldKey;
       castTitle = oldTitle;
       castCover = oldCover;
-      if (old == null) ScreenAwake.release();
+      if (old == null) {
+        ScreenAwake.release();
+      } else {
+        _startPoller();
+      }
       rethrow;
     }
-    await _seekAfterPush(startSec);
+    await _seekWhenReady(startSec);
     if (old != null && !identical(old, device)) {
       try {
         await old.stop();
       } catch (_) {}
     }
-    _poller?.cancel();
-    _poller = Timer.periodic(const Duration(seconds: 4), (_) => _tick());
+    _startPoller();
     notifyListeners();
   }
 
-  Future<void> _seekAfterPush(int sec) async {
-    if (sec <= 5) return;
-    try {
-      await _device!.seek(_hms(sec));
-      posSec = sec;
-      _lastRel = sec;
+  void _startPoller() {
+    _poller?.cancel();
+    _poller = Timer.periodic(const Duration(seconds: 1), (_) => _pollTick());
+  }
+
+  /// 每秒本地推算进度让 UI 平滑走秒，每 4 秒向电视校准一次
+  void _pollTick() {
+    if (_device == null) return;
+    if (++_pollCount % 4 == 0) {
+      _tick();
+    } else if (!paused && !_pushing && durSec > 0 && posSec < durSec) {
+      posSec++;
       notifyListeners();
-    } catch (_) {}
+    }
+  }
+
+  /// 新内容推送后等电视加载完成再 seek——立刻 seek 会被部分电视忽略。
+  Future<void> _seekWhenReady(int sec) async {
+    final d = _device;
+    if (d == null || sec <= 5) return;
+    for (var i = 0; i < 10; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!identical(d, _device)) return;
+      try {
+        if (PositionParser(await d.position()).TrackDurationInt > 0) {
+          await d.seek(_hms(sec));
+          posSec = sec;
+          _lastRel = sec;
+          _sawNearEnd = false;
+          notifyListeners();
+          return;
+        }
+      } catch (_) {}
+    }
   }
 
   /// 投屏中换一个视频：同设备重推新内容。
@@ -113,7 +144,7 @@ class CastSession extends ChangeNotifier {
     castCover = cover;
     try {
       await _push(index);
-      await _seekAfterPush(startSec);
+      await _seekWhenReady(startSec);
     } finally {
       _pushing = false;
     }
@@ -198,12 +229,7 @@ class CastSession extends ChangeNotifier {
     _pushing = true;
     try {
       await _push(_index);
-      if (pos > 5) {
-        await _device!.seek(_hms(pos));
-        posSec = pos;
-        _lastRel = pos;
-        notifyListeners();
-      }
+      await _seekWhenReady(pos);
     } finally {
       _pushing = false;
     }
@@ -218,12 +244,7 @@ class CastSession extends ChangeNotifier {
     _device = d;
     try {
       await _push(_index);
-      if (pos > 5) {
-        await d.seek(_hms(pos));
-        posSec = pos;
-        _lastRel = pos;
-        notifyListeners();
-      }
+      await _seekWhenReady(pos);
     } catch (_) {
       _device = old;
       notifyListeners();
@@ -248,6 +269,7 @@ class CastSession extends ChangeNotifier {
   Future<void> _tick() async {
     final d = _device;
     if (d == null || _pushing) return;
+    ScreenAwake.refresh();
     PositionParser p;
     try {
       p = PositionParser(await d.position());

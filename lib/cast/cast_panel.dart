@@ -241,9 +241,84 @@ class _CastPageState extends State<CastPage> {
     );
   }
 
-  Widget _bottomAction(String label, VoidCallback? onTap) {
+  /// 全宽饱满进度条（仿 B 站）：拖动/点按定位
+  Widget _progressBar(
+      {required bool canSeek, required int pos, required int dur}) {
+    return LayoutBuilder(builder: (ctx, cons) {
+      final w = cons.maxWidth;
+      final frac = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
+      void toValue(double dx) =>
+          setState(() => _dragValue = (dx / w).clamp(0.0, 1.0) * dur);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: canSeek
+            ? (d) {
+                setState(() => _dragging = true);
+                toValue(d.localPosition.dx);
+              }
+            : null,
+        onHorizontalDragUpdate:
+            canSeek ? (d) => toValue(d.localPosition.dx) : null,
+        onHorizontalDragEnd: canSeek
+            ? (_) {
+                setState(() => _dragging = false);
+                CastSession.i.seekTo(_dragValue.round());
+              }
+            : null,
+        onTapUp: canSeek
+            ? (d) {
+                final f = (d.localPosition.dx / w).clamp(0.0, 1.0);
+                CastSession.i.seekTo((f * dur).round());
+              }
+            : null,
+        child: SizedBox(
+          height: 32,
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                height: 7,
+                decoration: BoxDecoration(
+                  color: const Color(0x33FFFFFF),
+                  borderRadius: BorderRadius.circular(3.5),
+                ),
+              ),
+              FractionallySizedBox(
+                widthFactor: frac,
+                child: Container(
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.white,
+                    borderRadius: BorderRadius.circular(3.5),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: ((w - 18) * frac).clamp(0.0, w - 18),
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: const BoxDecoration(
+                    color: CupertinoColors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: Color(0x66000000), blurRadius: 4),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _bottomAction(String label, VoidCallback? onTap,
+      {EdgeInsetsGeometry padding =
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 8)}) {
     return CupertinoButton(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: padding,
       onPressed: onTap,
       child: Text(label,
           style: TextStyle(
@@ -384,38 +459,18 @@ class _CastPageState extends State<CastPage> {
                     ],
                   ),
                   const Spacer(flex: 3),
-                  CupertinoSlider(
-                    value: canSeek ? pos.clamp(0, dur).toDouble() : 0,
-                    max: canSeek ? dur.toDouble() : 1,
-                    onChangeStart: canSeek
-                        ? (v) => setState(() {
-                              _dragging = true;
-                              _dragValue = v;
-                            })
-                        : null,
-                    onChanged: canSeek
-                        ? (v) => setState(() => _dragValue = v)
-                        : null,
-                    onChangeEnd: canSeek
-                        ? (v) {
-                            setState(() => _dragging = false);
-                            s.seekTo(v.round());
-                          }
-                        : null,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_mmss(pos),
-                            style: const TextStyle(
-                                fontSize: 12, color: Color(0x99FFFFFF))),
-                        Text(_mmss(dur),
-                            style: const TextStyle(
-                                fontSize: 12, color: Color(0x99FFFFFF))),
-                      ],
-                    ),
+                  _progressBar(canSeek: canSeek, pos: pos, dur: dur),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_mmss(pos),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0x99FFFFFF))),
+                      Text(_mmss(dur),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0x99FFFFFF))),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   Row(
@@ -424,7 +479,9 @@ class _CastPageState extends State<CastPage> {
                           '选集',
                           s.episodes.length > 1
                               ? () => _pickEpisode(context)
-                              : null),
+                              : null,
+                          padding: const EdgeInsets.only(
+                              right: 14, top: 8, bottom: 8)),
                       const Spacer(),
                       _bottomAction(
                           '上一集',
@@ -435,7 +492,9 @@ class _CastPageState extends State<CastPage> {
                           '下一集',
                           s.index + 1 < s.episodes.length
                               ? () => s.playIndex(s.index + 1)
-                              : null),
+                              : null,
+                          padding: const EdgeInsets.only(
+                              left: 14, top: 8, bottom: 8)),
                     ],
                   ),
                   const SizedBox(height: 8),
