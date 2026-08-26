@@ -42,16 +42,29 @@ class KidLock with WindowListener {
   Future<String?> _storedPin() async =>
       (await SharedPreferences.getInstance()).getString('kid_pin');
 
+  /// 确保已设置家长密码，没有则引导设置。返回是否可用。
+  Future<bool> ensurePin(BuildContext context) async {
+    if (await _storedPin() != null) return true;
+    if (!context.mounted) return false;
+    final v = await _promptPin(context, '设置家长密码', '首次使用请设置密码（至少 4 位数字）');
+    if (v == null || v.length < 4) return false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('kid_pin', v);
+    return true;
+  }
+
+  /// 家长门：验证家长密码（无密码则先引导设置）。
+  Future<bool> verifyParent(BuildContext context, {String? title}) async {
+    if (!await ensurePin(context)) return false;
+    final pin = await _storedPin();
+    if (!context.mounted) return false;
+    final v = await _promptPin(context, title ?? '输入家长密码', null);
+    return v != null && v == pin;
+  }
+
   Future<bool> enable(BuildContext context) async {
     if (!supported) return false;
-    var pin = await _storedPin();
-    if (pin == null) {
-      if (!context.mounted) return false;
-      final v = await _promptPin(context, '设置家长密码', '首次使用请设置密码（至少 4 位数字）');
-      if (v == null || v.length < 4) return false;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('kid_pin', v);
-    }
+    if (!await ensurePin(context)) return false;
     if (Platform.isWindows) {
       await windowManager.setFullScreen(true);
       await windowManager.setPreventClose(true);
@@ -64,10 +77,7 @@ class KidLock with WindowListener {
   }
 
   Future<bool> disable(BuildContext context) async {
-    final pin = await _storedPin();
-    if (!context.mounted) return false;
-    final v = await _promptPin(context, '输入家长密码', null);
-    if (v == null || v != pin) return false;
+    if (!await verifyParent(context)) return false;
     if (Platform.isWindows) {
       await windowManager.setFullScreen(false);
       await windowManager.setPreventClose(false);

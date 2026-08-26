@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:bilibili_kid_viewer/app_settings.dart';
 import 'package:bilibili_kid_viewer/library.dart';
 
 import 'fake_http.dart';
@@ -62,6 +63,7 @@ Future<void> setUpTestEnv({Map<String, Object> prefs = const {}}) async {
     'guide_shown': true,
     ...prefs,
   });
+  await AppSettings.i.load();
   await loadTestFonts();
 }
 
