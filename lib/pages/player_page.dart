@@ -12,6 +12,7 @@ import '../api/bili_client.dart';
 import '../cast/cast_panel.dart';
 import '../cast/dlna_cast.dart';
 import '../screen_awake.dart';
+import '../screen_time.dart';
 import '../watch_history.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -34,6 +35,7 @@ class _PlayerPageState extends State<PlayerPage> {
   String? _error;
   Timer? _ticker;
   StreamSubscription<bool>? _completedSub;
+  StreamSubscription<bool>? _playingSub;
 
   @override
   void initState() {
@@ -41,6 +43,8 @@ class _PlayerPageState extends State<PlayerPage> {
     _completedSub = _player.stream.completed.listen((done) {
       if (done) _autoNext();
     });
+    _playingSub = _player.stream.playing.listen(ScreenTime.i.setLocalPlaying);
+    ScreenTime.i.pauseHandlers.add(_player.pause);
     CastSession.i.addListener(_onCastChanged);
     _wasCasting = _castingHere;
     ScreenAwake.acquire();
@@ -103,8 +107,11 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     CastSession.i.removeListener(_onCastChanged);
+    ScreenTime.i.pauseHandlers.remove(_player.pause);
+    ScreenTime.i.setLocalPlaying(false);
     ScreenAwake.release();
     _completedSub?.cancel();
+    _playingSub?.cancel();
     _ticker?.cancel();
     _record();
     _currentN.dispose();

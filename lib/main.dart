@@ -6,9 +6,11 @@ import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'api/bili_client.dart';
+import 'app_settings.dart';
 import 'kid_lock.dart';
 import 'pages/login_page.dart';
 import 'pages/main_shell.dart';
+import 'screen_time.dart';
 import 'win_title_bar.dart';
 
 final navKey = GlobalKey<NavigatorState>();
@@ -17,6 +19,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await KidLock.i.init(navKey);
+  await ScreenTime.i.init(navKey);
   if (Platform.isWindows) {
     const opts = WindowOptions(titleBarStyle: TitleBarStyle.hidden);
     await windowManager.waitUntilReadyToShow(opts, () async {
@@ -74,6 +77,7 @@ class _RootState extends State<Root> {
   }
 
   Future<void> _bootstrap() async {
+    await AppSettings.i.load();
     await BiliClient.i.init();
     var ok = false;
     try {
