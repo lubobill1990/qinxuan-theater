@@ -7,6 +7,10 @@ class FakeBili {
   static final Map<int, ({String title, List<Map<String, dynamic>> videos})>
       folders = {};
 
+  /// 他人公开收藏夹（预设体验模式经 folder/info 查询）
+  static final Map<int, ({String title, List<Map<String, dynamic>> videos})>
+      publicFolders = {};
+
   static int _vid = 0;
 
   /// 模拟慢网络，让测试能观察到「请求进行中」的 UI 状态。
@@ -43,6 +47,22 @@ class FakeBili {
             video('Super Simple Songs 英文儿歌', cover: 5),
             video('蓝色小考拉 Penelope 英文版', cover: 6),
           ],
+        ),
+      });
+    publicFolders
+      ..clear()
+      ..addAll({
+        4083295160: (
+          title: '亲选动画',
+          videos: [video('体验·经典动画合集', cover: 1)],
+        ),
+        4126710760: (
+          title: '亲选英语',
+          videos: [video('体验·英文儿歌精选', cover: 2)],
+        ),
+        4062316360: (
+          title: '亲选科普',
+          videos: [video('体验·自然科普纪录', cover: 3)],
         ),
       });
   }
@@ -151,12 +171,27 @@ HttpClientResponse _route(Uri url) {
         ],
       },
     };
+  } else if (path.contains('/x/v3/fav/folder/info')) {
+    final id = int.parse(url.queryParameters['media_id']!);
+    final f = FakeBili.publicFolders[id] ?? FakeBili.folders[id];
+    body = f == null
+        ? {'code': -404, 'message': 'fake: folder $id not found', 'data': null}
+        : {
+            'code': 0,
+            'data': {
+              'id': id,
+              'title': f.title,
+              'media_count': f.videos.length
+            },
+          };
   } else if (path.contains('/x/v3/fav/resource/list')) {
     final id = int.parse(url.queryParameters['media_id']!);
     body = {
       'code': 0,
       'data': {
-        'medias': FakeBili.folders[id]?.videos ?? [],
+        'medias': (FakeBili.folders[id] ?? FakeBili.publicFolders[id])
+                ?.videos ??
+            [],
         'has_more': false,
       },
     };

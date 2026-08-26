@@ -1,13 +1,14 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 
-import '../api/bili_client.dart';
+import '../app_settings.dart';
 import '../kid_lock.dart';
 import '../library.dart';
 import '../models.dart';
 import '../widgets/video_card.dart';
 import 'guide_page.dart';
 import 'player_page.dart';
+import 'settings_page.dart';
 
 class HomeTab extends StatefulWidget {
   final VoidCallback onLogout;
@@ -92,60 +93,30 @@ class _HomeTabState extends State<HomeTab> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _startTrial() async {
+    await AppSettings.i.setTrialMode(true);
+    Library.i.reset();
+    _selected = -1;
+    await _reload();
+  }
+
+  Future<void> _exitTrial() async {
+    await AppSettings.i.setTrialMode(false);
+    Library.i.reset();
+    _selected = -1;
+    await _reload();
+  }
+
   Future<void> _showSettings() async {
     await KidLock.i.refresh();
     if (!mounted) return;
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: Text(BiliClient.i.uname),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(ctx);
-              showGuide(context);
-            },
-            child: const Text('使用说明'),
-          ),
-          if (KidLock.i.supported)
-            CupertinoActionSheetAction(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                if (KidLock.i.locked) {
-                  await KidLock.i.disable(context);
-                } else {
-                  await KidLock.i.enable(context);
-                }
-                if (mounted) setState(() {});
-              },
-              child: Text(
-                  KidLock.i.locked ? '退出儿童锁定' : KidLock.i.enableLabel),
-            ),
-          if (KidLock.i.iosGuide)
-            CupertinoActionSheetAction(
-              onPressed: () {
-                Navigator.pop(ctx);
-                KidLock.i.showGuidedAccessHelp(context);
-              },
-              child: const Text('儿童锁定（引导式访问）'),
-            ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await BiliClient.i.logout();
-              Library.i.reset();
-              widget.onLogout();
-            },
-            child: const Text('退出登录'),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('取消'),
-        ),
+    await Navigator.of(context).push(
+      CupertinoPageRoute(
+        builder: (_) => SettingsPage(onLogout: widget.onLogout),
       ),
     );
+    // 设置里可能改了关键字或退出体验模式，回来刷新一次
+    if (mounted) _reload();
   }
 
   @override
@@ -206,6 +177,8 @@ class _HomeTabState extends State<HomeTab> {
             ),
           ),
         ),
+        if (AppSettings.i.trialMode)
+          SliverToBoxAdapter(child: _trialBanner()),
         if (folders.length > 1) SliverToBoxAdapter(child: _folderChips()),
         if (_loading)
           const SliverFillRemaining(
@@ -221,7 +194,31 @@ class _HomeTabState extends State<HomeTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _message('没有找到「儿童」开头的收藏夹\n请先在哔哩哔哩里创建并收藏视频'),
+                  _message(
+                      '没有找到「${AppSettings.i.kidKeywords.join('/')}」开头的收藏夹\n请先在哔哩哔哩里创建并收藏视频'),
+                  const SizedBox(height: 16),
+                  CupertinoButton.filled(
+                    borderRadius: BorderRadius.circular(14),
+                    onPressed: () => showGuide(context),
+                    child: const Text('查看使用说明'),
+                  ),
+                  const SizedBox(height: 8),
+                  CupertinoButton(
+                    onPressed: _startTrial,
+                    child: const Text('先用预设内容快速体验'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (videos.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _message('这里还没有视频'),
                   const SizedBox(height: 16),
                   CupertinoButton.filled(
                     borderRadius: BorderRadius.circular(14),
@@ -232,9 +229,6 @@ class _HomeTabState extends State<HomeTab> {
               ),
             ),
           )
-        else if (videos.isEmpty)
-          SliverFillRemaining(
-              hasScrollBody: false, child: _message('这里还没有视频'))
         else
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, kBottomBarSpace),
@@ -257,11 +251,47 @@ class _HomeTabState extends State<HomeTab> {
     );
   }
 
+  Widget _trialBanner() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: CupertinoColors.activeOrange.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(CupertinoIcons.sparkles,
+                size: 18, color: CupertinoColors.activeOrange),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('正在体验预设内容',
+                  style:
+                      TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(30, 30),
+              onPressed: _exitTrial,
+              child: const Text('退出体验', style: TextStyle(fontSize: 14)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _folderChips() {
     final folders = Library.i.folders;
     String label(FavFolder f) {
-      final t = f.title.replaceFirst('儿童', '').trim();
-      return t.isEmpty ? f.title : t;
+      for (final k in AppSettings.i.kidKeywords) {
+        if (f.title.startsWith(k)) {
+          final t = f.title.substring(k.length).trim();
+          return t.isEmpty ? f.title : t;
+        }
+      }
+      return f.title;
     }
 
     Widget chip(String text, bool active, VoidCallback onTap) {
