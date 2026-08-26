@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_settings.dart';
 import '../models.dart';
 
 const kUserAgent =
@@ -183,10 +184,18 @@ class BiliClient {
         'https://api.bilibili.com/x/v3/fav/folder/created/list-all',
         params: {'up_mid': mid});
     final list = (d?['list'] ?? []) as List;
+    final keywords = AppSettings.i.kidKeywords;
     return list
         .map((j) => FavFolder.fromJson(j as Map<String, dynamic>))
-        .where((f) => f.title.startsWith('儿童'))
+        .where((f) => keywords.any(f.title.startsWith))
         .toList();
+  }
+
+  /// 按 media_id 查收藏夹元信息（公开收藏夹无需本人），预设体验用
+  Future<FavFolder> favFolderInfo(int mediaId) async {
+    final d = await _get('https://api.bilibili.com/x/v3/fav/folder/info',
+        params: {'media_id': mediaId});
+    return FavFolder.fromJson(d as Map<String, dynamic>);
   }
 
   Future<List<VideoItem>> favVideos(int mediaId) async {

@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_settings.dart';
+
 const _kGuideShownKey = 'guide_shown';
 
 Future<bool> guideShown() async {
@@ -27,23 +29,31 @@ class _GuideStep {
   const _GuideStep(this.icon, this.title, this.body);
 }
 
-const _steps = [
-  _GuideStep(
-    CupertinoIcons.folder_fill_badge_plus,
-    '第一步：在哔哩哔哩里建收藏夹',
-    '打开哔哩哔哩 App 或网页，创建名字以「儿童」开头的收藏夹。\n\n例如：儿童动画、儿童英语、儿童科普。\n可以建多个，方便分类管理。',
-  ),
-  _GuideStep(
-    CupertinoIcons.star_fill,
-    '第二步：收藏想给孩子看的视频',
-    '在哔哩哔哩里刷到适合孩子的视频时，把它收藏进「儿童」收藏夹。\n\n以后随时增删收藏，就能控制孩子能看到的内容。',
-  ),
-  _GuideStep(
-    CupertinoIcons.checkmark_shield_fill,
-    '第三步：孩子只看你选的',
-    '回到亲选小剧场，下拉刷新首页，收藏的视频就会出现。\n\n这里没有弹幕、评论和推荐，孩子只能看到你挑选的视频，专注不迷路。',
-  ),
-];
+List<_GuideStep> get _steps {
+  final k = AppSettings.i.kidKeywords.first;
+  final all = AppSettings.i.kidKeywords.join('/');
+  return [
+    _GuideStep(
+      CupertinoIcons.folder_fill_badge_plus,
+      '第一步：在哔哩哔哩里建收藏夹',
+      '打开哔哩哔哩 App 或网页，创建名字以「$all」开头的收藏夹。\n\n'
+          '例如：$k动画、$k英语、$k科普。\n'
+          '可以建多个，方便分类管理。\n关键字可以在设置里修改。',
+    ),
+    _GuideStep(
+      CupertinoIcons.star_fill,
+      '第二步：收藏想给孩子看的视频',
+      '在哔哩哔哩里刷到适合孩子的视频时，把它收藏进「$k」收藏夹。\n\n'
+          '以后随时增删收藏，就能控制孩子能看到的内容。',
+    ),
+    const _GuideStep(
+      CupertinoIcons.checkmark_shield_fill,
+      '第三步：孩子只看你选的',
+      '回到亲选小剧场，下拉刷新首页，收藏的视频就会出现。\n\n'
+          '这里没有弹幕、评论和推荐，孩子只能看到你挑选的视频，专注不迷路。',
+    ),
+  ];
+}
 
 class _GuidePageState extends State<GuidePage> {
   final PageController _pc = PageController();
