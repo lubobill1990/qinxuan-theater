@@ -215,6 +215,8 @@ class _LoginPageState extends State<LoginPage> {
                   : Align(
                       alignment: Alignment.centerRight,
                       child: CupertinoButton(
+                        // 默认上下各 16 padding 会在 44 高的容器里裁掉文字
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         onPressed: () => _goTo(_pageCount - 1),
                         child:
                             const Text('跳过', style: TextStyle(fontSize: 15)),
