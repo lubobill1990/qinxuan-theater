@@ -10,7 +10,8 @@ import 'pages/lock_page.dart';
 
 enum LockKind { rest, daily }
 
-/// 观看时长统计与限制：本地播放或投屏（未暂停）都计时。
+/// 观看时长统计与限制：只有实际播放中才计时——
+/// 本地播放器在播，或电视端投屏真的在播（暂停/加载/播完都不算）。
 /// 连续观看到设定值弹休息锁（倒计时结束自动解锁），
 /// 当日总时长到上限弹每日锁（只能家长 PIN 解锁）。
 class ScreenTime extends ChangeNotifier {
@@ -88,8 +89,8 @@ class ScreenTime extends ChangeNotifier {
       _maybeSave();
       return;
     }
-    final watching = lock == null &&
-        (_localPlaying || (CastSession.i.active && !CastSession.i.paused));
+    final watching =
+        lock == null && (_localPlaying || CastSession.i.playing);
     if (watching) {
       continuousSec++;
       todaySec++;
@@ -118,7 +119,8 @@ class ScreenTime extends ChangeNotifier {
     for (final h in pauseHandlers) {
       h();
     }
-    if (CastSession.i.active) CastSession.i.pause();
+    // 电视端不受锁定页控制，暂停指令还可能被遥控器恢复，直接停投
+    if (CastSession.i.active) CastSession.i.stop();
     final nav = _navKey?.currentState;
     if (nav != null && _lockRoute == null) {
       final route = CupertinoPageRoute<void>(

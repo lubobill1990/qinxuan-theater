@@ -41,6 +41,9 @@ class CastSession extends ChangeNotifier {
   int lastSessionPosSec = 0;
 
   bool get active => _device != null;
+
+  /// 电视端确实在播：有内容、未暂停、未播完（加载中/播完复位不算）
+  bool get playing => active && !paused && durSec > 0 && posSec < durSec;
   String get deviceName => _device?.info.friendlyName ?? '';
   int get index => _index;
   List<Episode> get episodes => _episodes;
